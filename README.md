@@ -40,7 +40,7 @@
 - `INSECURE`：可选，`1|0`，默认 `0`
 - `VERBOSE`：可选，`1|0`，默认 `0`
 
-## 本地运行
+## 本地运行（仓库内脚本）
 
 默认删除模式（无参数）：
 
@@ -65,29 +65,40 @@ export LAST_RUN_EPOCH='1772532000'
 bash scripts/cleanup_invalid_auth_files.sh
 ```
 
-## 直接从 GitHub 地址运行
+## 本地模式（先下载代码，再执行）
 
-无需先克隆仓库，可直接运行主分支脚本：
+### 1. 先设置环境变量
 
 ```bash
 export MANAGEMENT_KEY='your_management_key'
-curl -fsSL https://raw.githubusercontent.com/qiuyurs/CliProxyAuthSweeper/main/scripts/cleanup_invalid_auth_files.sh | bash
+export BASE_URL='http://localhost:8317/v0/management'
+export THRESHOLD='3'
+export RUN_MODE='delete'                # delete|observe
+export LAST_RUN_EPOCH=''                # 首次可为空；增量时填上次时间戳
+export ALLOW_NAME_FALLBACK='1'          # 1 开启 name 回退匹配，0 关闭
+export TIMEOUT='10'
+export INSECURE='0'                     # 测试环境自签证书可设为 1
+export VERBOSE='0'
 ```
 
-观察模式：
+### 2. 下载脚本文件
 
 ```bash
-export MANAGEMENT_KEY='your_management_key'
+curl -fsSL -o cleanup_invalid_auth_files.sh \
+  https://raw.githubusercontent.com/qiuyurs/CliProxyAuthSweeper/main/scripts/cleanup_invalid_auth_files.sh
+```
+
+### 3. 使用 bash 运行脚本
+
+```bash
+bash cleanup_invalid_auth_files.sh
+```
+
+观察模式示例：
+
+```bash
 export RUN_MODE='observe'
-curl -fsSL https://raw.githubusercontent.com/qiuyurs/CliProxyAuthSweeper/main/scripts/cleanup_invalid_auth_files.sh | bash
-```
-
-增量模式（外部注入上次运行时间）：
-
-```bash
-export MANAGEMENT_KEY='your_management_key'
-export LAST_RUN_EPOCH='1772532000'
-curl -fsSL https://raw.githubusercontent.com/qiuyurs/CliProxyAuthSweeper/main/scripts/cleanup_invalid_auth_files.sh | bash
+bash cleanup_invalid_auth_files.sh
 ```
 
 ## 增量运行说明（无文件状态）
@@ -98,6 +109,16 @@ curl -fsSL https://raw.githubusercontent.com/qiuyurs/CliProxyAuthSweeper/main/sc
 - `NEXT_LAST_RUN_AT=<utc_time>`
 
 你可以把 `NEXT_LAST_RUN_EPOCH` 存到调度系统或外部状态存储，下一次作为 `LAST_RUN_EPOCH` 传回脚本。
+
+## 定时任务（每 1 小时运行一次）
+
+Linux `crontab` 示例：
+
+```cron
+0 * * * * export MANAGEMENT_KEY='your_management_key'; export BASE_URL='http://localhost:8317/v0/management'; export THRESHOLD='3'; export RUN_MODE='delete'; bash /path/to/cleanup_invalid_auth_files.sh >> /var/log/cliproxy-auth-sweeper.log 2>&1
+```
+
+如果要做增量窗口，请在调度系统里保存上次输出的 `NEXT_LAST_RUN_EPOCH`，并在下次执行前注入为 `LAST_RUN_EPOCH`。
 
 ## 接口
 
