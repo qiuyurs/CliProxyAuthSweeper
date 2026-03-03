@@ -40,64 +40,11 @@
 - `INSECURE`：可选，`1|0`，默认 `0`
 - `VERBOSE`：可选，`1|0`，默认 `0`
 
-## 本地运行（仓库内脚本）
-
-默认删除模式（无参数）：
+## 快速运行（3 行）
 
 ```bash
-export MANAGEMENT_KEY='your_management_key'
-bash scripts/cleanup_invalid_auth_files.sh
-```
-
-观察模式（只看候选，不删除）：
-
-```bash
-export MANAGEMENT_KEY='your_management_key'
-export RUN_MODE='observe'
-bash scripts/cleanup_invalid_auth_files.sh
-```
-
-增量窗口示例（上次运行时间到当前）：
-
-```bash
-export MANAGEMENT_KEY='your_management_key'
-export LAST_RUN_EPOCH='1772532000'
-bash scripts/cleanup_invalid_auth_files.sh
-```
-
-## 本地模式（先下载代码，再执行）
-
-### 1. 先设置环境变量
-
-```bash
-export MANAGEMENT_KEY='your_management_key'
-export BASE_URL='http://localhost:8317/v0/management'
-export THRESHOLD='3'
-export RUN_MODE='delete'                # delete|observe
-export LAST_RUN_EPOCH=''                # 首次可为空；增量时填上次时间戳
-export ALLOW_NAME_FALLBACK='1'          # 1 开启 name 回退匹配，0 关闭
-export TIMEOUT='10'
-export INSECURE='0'                     # 测试环境自签证书可设为 1
-export VERBOSE='0'
-```
-
-### 2. 下载脚本文件
-
-```bash
-curl -fsSL -o cleanup_invalid_auth_files.sh \
-  https://raw.githubusercontent.com/qiuyurs/CliProxyAuthSweeper/main/scripts/cleanup_invalid_auth_files.sh
-```
-
-### 3. 使用 bash 运行脚本
-
-```bash
-bash cleanup_invalid_auth_files.sh
-```
-
-观察模式示例：
-
-```bash
-export RUN_MODE='observe'
+export MANAGEMENT_KEY='your_management_key' BASE_URL='http://localhost:8317/v0/management' THRESHOLD='3' RUN_MODE='delete' LAST_RUN_EPOCH='' ALLOW_NAME_FALLBACK='1' TIMEOUT='10' INSECURE='0' VERBOSE='0'
+curl -fsSL -o cleanup_invalid_auth_files.sh https://raw.githubusercontent.com/qiuyurs/CliProxyAuthSweeper/main/scripts/cleanup_invalid_auth_files.sh
 bash cleanup_invalid_auth_files.sh
 ```
 
