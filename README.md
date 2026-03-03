@@ -28,6 +28,32 @@
 - curl
 - jq 1.6+
 
+## 快速运行（仅设置密钥，其他使用默认值）
+
+```bash
+# 1) 只设置必填密钥；其他变量不设置，脚本将使用默认值
+export MANAGEMENT_KEY='your_management_key'
+
+# 2) 下载脚本到当前目录
+curl -fsSL -o cleanup_invalid_auth_files.sh https://raw.githubusercontent.com/qiuyurs/CliProxyAuthSweeper/main/scripts/cleanup_invalid_auth_files.sh
+
+# 3) 执行脚本（默认 RUN_MODE=delete，会直接删除失效文件）
+bash cleanup_invalid_auth_files.sh
+```
+
+## 定时任务（每 1 小时运行一次）
+
+Linux `crontab` 示例：
+
+```cron
+0 * * * * bash /path/to/cleanup_invalid_auth_files.sh
+```
+
+说明：
+
+- 该示例只执行脚本文件，默认认为环境变量已提前设置完成
+- 若需增量窗口，请在调度系统中维护并注入 `LAST_RUN_EPOCH`
+
 ## 环境变量
 
 - `MANAGEMENT_KEY`：必填，管理密钥
@@ -40,12 +66,17 @@
 - `INSECURE`：可选，`1|0`，默认 `0`
 - `VERBOSE`：可选，`1|0`，默认 `0`
 
-## 快速运行（3 行）
-
 ```bash
-export MANAGEMENT_KEY='your_management_key' BASE_URL='http://localhost:8317/v0/management' THRESHOLD='3' RUN_MODE='delete' LAST_RUN_EPOCH='' ALLOW_NAME_FALLBACK='1' TIMEOUT='10' INSECURE='0' VERBOSE='0'
-curl -fsSL -o cleanup_invalid_auth_files.sh https://raw.githubusercontent.com/qiuyurs/CliProxyAuthSweeper/main/scripts/cleanup_invalid_auth_files.sh
-bash cleanup_invalid_auth_files.sh
+# 示例：按需设置全部变量（非必须）
+export MANAGEMENT_KEY='your_management_key'
+export BASE_URL='http://localhost:8317/v0/management'
+export THRESHOLD='3'
+export RUN_MODE='delete'                # delete|observe
+export LAST_RUN_EPOCH=''                # 首次可为空；增量时填上次时间戳
+export ALLOW_NAME_FALLBACK='1'          # 1 开启 name 回退匹配，0 关闭
+export TIMEOUT='10'
+export INSECURE='0'                     # 测试环境自签证书可设为 1
+export VERBOSE='0'
 ```
 
 ## 增量运行说明（无文件状态）
@@ -56,19 +87,3 @@ bash cleanup_invalid_auth_files.sh
 - `NEXT_LAST_RUN_AT=<utc_time>`
 
 你可以把 `NEXT_LAST_RUN_EPOCH` 存到调度系统或外部状态存储，下一次作为 `LAST_RUN_EPOCH` 传回脚本。
-
-## 定时任务（每 1 小时运行一次）
-
-Linux `crontab` 示例：
-
-```cron
-0 * * * * export MANAGEMENT_KEY='your_management_key'; export BASE_URL='http://localhost:8317/v0/management'; export THRESHOLD='3'; export RUN_MODE='delete'; bash /path/to/cleanup_invalid_auth_files.sh >> /var/log/cliproxy-auth-sweeper.log 2>&1
-```
-
-如果要做增量窗口，请在调度系统里保存上次输出的 `NEXT_LAST_RUN_EPOCH`，并在下次执行前注入为 `LAST_RUN_EPOCH`。
-
-## 接口
-
-- `GET /v0/management/usage`
-- `GET /v0/management/auth-files`
-- `DELETE /v0/management/auth-files?name=<file.json>`
