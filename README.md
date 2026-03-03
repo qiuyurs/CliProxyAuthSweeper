@@ -7,7 +7,7 @@
 - 默认直接删除失效授权文件（`RUN_MODE=delete`）
 - 支持观察模式（`RUN_MODE=observe`，只检测不删除）
 - 仅使用环境变量配置，不接收命令行参数
-- 运行时不创建任何本地文件
+- 不创建业务状态文件（增量状态由外部系统维护）
 - 支持首次全量、后续增量窗口（通过环境变量 `LAST_RUN_EPOCH` 传入）
 
 ## 判定规则
@@ -26,7 +26,7 @@
 
 - Bash 4+
 - curl
-- jq 1.6+
+- jq（脚本会自动检测并安装；也可手动安装）
 
 ## 快速运行（仅设置密钥，其他使用默认值）
 
@@ -65,6 +65,9 @@ Linux `crontab` 示例：
 - `TIMEOUT`：可选，默认 `10`
 - `INSECURE`：可选，`1|0`，默认 `0`
 - `VERBOSE`：可选，`1|0`，默认 `0`
+- `AUTO_INSTALL_JQ`：可选，`1|0`，默认 `1`（`jq` 缺失时自动安装）
+- `JQ_VERSION`：可选，默认 `jq-1.7.1`（下载回退时使用）
+- `JQ_INSTALL_DIR`：可选，默认 `$HOME/.local/bin`（下载回退安装目录）
 
 ```bash
 # 示例：按需设置全部变量（非必须）
@@ -77,6 +80,21 @@ export ALLOW_NAME_FALLBACK='1'          # 1 开启 name 回退匹配，0 关闭
 export TIMEOUT='10'
 export INSECURE='0'                     # 测试环境自签证书可设为 1
 export VERBOSE='0'
+export AUTO_INSTALL_JQ='1'
+export JQ_VERSION='jq-1.7.1'
+export JQ_INSTALL_DIR="$HOME/.local/bin"
+```
+
+## jq 自动安装说明
+
+- 若系统中没有 `jq`，脚本会自动尝试安装
+- 安装顺序：
+1. 使用系统包管理器（`apt`/`yum`/`dnf`/`apk`/`pacman`/`zypper`/`brew`/`choco`/`scoop`）
+2. 若包管理器失败，则尝试从 GitHub Release 下载 `jq` 二进制到 `JQ_INSTALL_DIR`
+- 若你不希望自动安装，可设置：
+
+```bash
+export AUTO_INSTALL_JQ='0'
 ```
 
 ## 增量运行说明（无文件状态）

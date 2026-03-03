@@ -15,6 +15,9 @@ Environment variables:
   TIMEOUT                   Optional. HTTP timeout seconds (default: 10)
   INSECURE                  Optional. 1|0 (default: 0)
   VERBOSE                   Optional. 1|0 (default: 0)
+  AUTO_INSTALL_JQ           Optional. 1|0 (default: 1)
+  JQ_VERSION                Optional. Default: jq-1.7.1
+  JQ_INSTALL_DIR            Optional. Default: $HOME/.local/bin (download fallback)
 
 Examples:
   export MANAGEMENT_KEY='xxx'
@@ -64,6 +67,138 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing command: $1"
 }
 
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+run_privileged() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+    return $?
+  fi
+  if command_exists sudo; then
+    sudo "$@"
+    return $?
+  fi
+  return 1
+}
+
+install_jq_via_pkg_manager() {
+  if command_exists apt-get; then
+    info "jq auto-install: trying apt-get"
+    run_privileged env DEBIAN_FRONTEND=noninteractive apt-get update >/dev/null 2>&1 || return 1
+    run_privileged env DEBIAN_FRONTEND=noninteractive apt-get install -y jq >/dev/null 2>&1 || return 1
+    return 0
+  fi
+  if command_exists dnf; then
+    info "jq auto-install: trying dnf"
+    run_privileged dnf install -y jq >/dev/null 2>&1 || return 1
+    return 0
+  fi
+  if command_exists yum; then
+    info "jq auto-install: trying yum"
+    run_privileged yum install -y jq >/dev/null 2>&1 || return 1
+    return 0
+  fi
+  if command_exists apk; then
+    info "jq auto-install: trying apk"
+    run_privileged apk add --no-cache jq >/dev/null 2>&1 || return 1
+    return 0
+  fi
+  if command_exists pacman; then
+    info "jq auto-install: trying pacman"
+    run_privileged pacman -Sy --noconfirm jq >/dev/null 2>&1 || return 1
+    return 0
+  fi
+  if command_exists zypper; then
+    info "jq auto-install: trying zypper"
+    run_privileged zypper --non-interactive install jq >/dev/null 2>&1 || return 1
+    return 0
+  fi
+  if command_exists brew; then
+    info "jq auto-install: trying brew"
+    brew install jq >/dev/null 2>&1 || return 1
+    return 0
+  fi
+  if command_exists choco; then
+    info "jq auto-install: trying choco"
+    choco install jq -y >/dev/null 2>&1 || return 1
+    return 0
+  fi
+  if command_exists scoop; then
+    info "jq auto-install: trying scoop"
+    scoop install jq >/dev/null 2>&1 || return 1
+    return 0
+  fi
+  return 1
+}
+
+install_jq_via_download() {
+  local os arch asset url install_dir target
+
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  arch="$(uname -m)"
+
+  case "$arch" in
+    x86_64|amd64) arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *)
+      debug "jq auto-install: unsupported arch for download fallback: $arch"
+      return 1
+      ;;
+  esac
+
+  case "$os" in
+    linux*) asset="jq-linux-${arch}" ;;
+    darwin*) asset="jq-macos-${arch}" ;;
+    *)
+      debug "jq auto-install: unsupported os for download fallback: $os"
+      return 1
+      ;;
+  esac
+
+  if [[ -n "$JQ_INSTALL_DIR" ]]; then
+    install_dir="$JQ_INSTALL_DIR"
+  else
+    install_dir="${HOME:-/tmp}/.local/bin"
+  fi
+  target="${install_dir}/jq"
+  url="https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/${asset}"
+
+  info "jq auto-install: downloading ${url}"
+  mkdir -p "$install_dir" || return 1
+  curl -fsSL -o "$target" "$url" || return 1
+  chmod +x "$target" || return 1
+  PATH="$install_dir:$PATH"
+  export PATH
+  return 0
+}
+
+ensure_jq() {
+  if command_exists jq; then
+    return 0
+  fi
+
+  if [[ "$AUTO_INSTALL_JQ" -ne 1 ]]; then
+    die "jq not found and AUTO_INSTALL_JQ=0; please install jq manually"
+  fi
+
+  info "jq not found, starting auto-install"
+  install_jq_via_pkg_manager || true
+  if command_exists jq; then
+    info "jq installed successfully via package manager"
+    return 0
+  fi
+
+  install_jq_via_download || true
+  if command_exists jq; then
+    info "jq installed successfully via download fallback"
+    return 0
+  fi
+
+  die "failed to auto-install jq; install jq manually and rerun"
+}
+
 BASE_URL="${BASE_URL:-http://localhost:8317/v0/management}"
 MANAGEMENT_KEY="${MANAGEMENT_KEY:-}"
 THRESHOLD="${THRESHOLD:-3}"
@@ -73,6 +208,9 @@ ALLOW_NAME_FALLBACK="$(to_bool01 "${ALLOW_NAME_FALLBACK:-1}")"
 TIMEOUT="${TIMEOUT:-10}"
 INSECURE="$(to_bool01 "${INSECURE:-0}")"
 VERBOSE="$(to_bool01 "${VERBOSE:-0}")"
+AUTO_INSTALL_JQ="$(to_bool01 "${AUTO_INSTALL_JQ:-1}")"
+JQ_VERSION="${JQ_VERSION:-jq-1.7.1}"
+JQ_INSTALL_DIR="${JQ_INSTALL_DIR:-}"
 
 [[ -n "$MANAGEMENT_KEY" ]] || die "MANAGEMENT_KEY is required"
 [[ "$THRESHOLD" =~ ^[0-9]+$ ]] || die "THRESHOLD must be an integer"
@@ -96,7 +234,7 @@ if [[ "$RUN_MODE" == "observe" ]]; then
 fi
 
 require_cmd curl
-require_cmd jq
+ensure_jq
 
 HTTP_BODY=""
 HTTP_CODE=""
