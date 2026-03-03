@@ -7,9 +7,10 @@
 - 默认直接删除失效授权文件（`RUN_MODE=delete`）
 - 支持观察模式（`RUN_MODE=observe`，只检测不删除）
 - 仅使用环境变量配置，不接收命令行参数
-- 不创建业务状态文件（增量状态由外部系统维护）
+- 不创建业务状态文件
 - 不依赖 `jq`
-- 支持首次全量、后续增量窗口（通过环境变量 `LAST_RUN_EPOCH` 传入）
+- 控制台输出中文可读运行报告
+- 每次运行固定全量扫描
 
 ## 判定规则
 
@@ -53,7 +54,6 @@ Linux `crontab` 示例：
 说明：
 
 - 该示例只执行脚本文件，默认认为环境变量已提前设置完成
-- 若需增量窗口，请在调度系统中维护并注入 `LAST_RUN_EPOCH`
 
 ## 环境变量
 
@@ -61,7 +61,6 @@ Linux `crontab` 示例：
 - `BASE_URL`：可选，默认 `http://localhost:8317/v0/management`
 - `THRESHOLD`：可选，默认 `3`
 - `RUN_MODE`：可选，`delete|observe`，默认 `delete`
-- `LAST_RUN_EPOCH`：可选，Unix 秒级时间戳；设置后启用增量窗口
 - `ALLOW_NAME_FALLBACK`：可选，`1|0`，默认 `1`
 - `TIMEOUT`：可选，默认 `10`
 - `INSECURE`：可选，`1|0`，默认 `0`
@@ -74,19 +73,9 @@ export MANAGEMENT_KEY='your_management_key'
 export BASE_URL='http://localhost:8317/v0/management'
 export THRESHOLD='3'
 export RUN_MODE='delete'                # delete|observe
-export LAST_RUN_EPOCH=''                # 首次可为空；增量时填上次时间戳
 export ALLOW_NAME_FALLBACK='1'          # 1 开启 name 回退匹配，0 关闭
 export TIMEOUT='10'
 export INSECURE='0'                     # 测试环境自签证书可设为 1
 export VERBOSE='0'
 export PYTHON_BIN='python3'
 ```
-
-## 增量运行说明（无文件状态）
-
-脚本不会写状态文件。每次运行会输出：
-
-- `NEXT_LAST_RUN_EPOCH=<epoch>`
-- `NEXT_LAST_RUN_AT=<utc_time>`
-
-你可以把 `NEXT_LAST_RUN_EPOCH` 存到调度系统或外部状态存储，下一次作为 `LAST_RUN_EPOCH` 传回脚本。

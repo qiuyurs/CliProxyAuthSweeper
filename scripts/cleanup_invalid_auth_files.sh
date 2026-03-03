@@ -10,7 +10,6 @@ Environment variables:
   BASE_URL                  Optional. Default: http://localhost:8317/v0/management
   THRESHOLD                 Optional. Default: 3
   RUN_MODE                  Optional. delete|observe (default: delete)
-  LAST_RUN_EPOCH            Optional. If set, only analyze (LAST_RUN_EPOCH, now]
   ALLOW_NAME_FALLBACK       Optional. 1|0 (default: 1)
   TIMEOUT                   Optional. HTTP timeout seconds (default: 10)
   INSECURE                  Optional. 1|0 (default: 0)
@@ -166,7 +165,7 @@ def request_json_or_die(base_url, path, method, headers, timeout, insecure):
         die(f"{method} {path} returned invalid JSON")
 
 
-def build_usage_analysis(usage_obj, threshold, run_started_epoch, last_run_epoch):
+def build_usage_analysis(usage_obj, threshold, run_started_epoch):
     events = []
     usage = usage_obj.get("usage", {}) if isinstance(usage_obj, dict) else {}
     apis = usage.get("apis", {}) if isinstance(usage, dict) else {}
@@ -199,14 +198,8 @@ def build_usage_analysis(usage_obj, threshold, run_started_epoch, last_run_epoch
                         }
                     )
 
-    if last_run_epoch is None:
-        window_events = [e for e in events if e["epoch"] <= run_started_epoch]
-        window_mode = "full"
-    else:
-        window_events = [
-            e for e in events if last_run_epoch < e["epoch"] <= run_started_epoch
-        ]
-        window_mode = "incremental"
+    window_events = [e for e in events if e["epoch"] <= run_started_epoch]
+    window_mode = "full"
 
     window_events.sort(key=lambda x: x["epoch"])
 
@@ -353,7 +346,6 @@ def main():
     run_mode = os.getenv("RUN_MODE", "delete").strip().lower()
     if run_mode not in {"delete", "observe"}:
         die("RUN_MODE must be one of: delete, observe")
-    last_run_epoch = parse_int("LAST_RUN_EPOCH", os.getenv("LAST_RUN_EPOCH"), min_value=0, required=False)
     allow_name_fallback = to_bool(os.getenv("ALLOW_NAME_FALLBACK", "1"), default=True)
     timeout = parse_int("TIMEOUT", os.getenv("TIMEOUT", "10"), min_value=1, required=True)
     insecure = to_bool(os.getenv("INSECURE", "0"), default=False)
@@ -365,10 +357,7 @@ def main():
 
     info(f"run_started_at={run_started_at}")
     info(f"run_mode={run_mode} (default is delete)")
-    if last_run_epoch is None:
-        info("window=full (LAST_RUN_EPOCH not set)")
-    else:
-        info(f"window=incremental from_epoch={last_run_epoch} to_epoch={run_started_epoch}")
+    info("window=full (always full scan)")
 
     headers = {
         "Accept": "application/json",
@@ -388,7 +377,6 @@ def main():
         usage_obj=usage_obj,
         threshold=threshold,
         run_started_epoch=run_started_epoch,
-        last_run_epoch=last_run_epoch,
     )
 
     auth_files_obj = request_json_or_die(
@@ -459,9 +447,6 @@ def main():
         "threshold": threshold,
         "base_url": base_url,
         "allow_name_fallback": allow_name_fallback,
-        "last_run_epoch_input": last_run_epoch,
-        "next_last_run_epoch": run_started_epoch,
-        "next_last_run_at": run_started_at,
         "window_mode": window_mode,
         "usage_total_events": usage_total_events,
         "usage_window_events": usage_window_events,
@@ -472,8 +457,58 @@ def main():
         "errors": errors,
     }
 
-    info(f"NEXT_LAST_RUN_EPOCH={run_started_epoch}")
-    info(f"NEXT_LAST_RUN_AT={run_started_at}")
+    run_mode_cn = "删除模式" if run_mode == "delete" else "观察模式"
+    window_mode_cn = "全量"
+    allow_name_fallback_cn = "开启" if allow_name_fallback else "关闭"
+    window_range = f"起始 -> {run_started_at}"
+
+    info("=============== CliProxyAuthSweeper 运行报告 ===============")
+    info(f"运行时间(UTC)       : {run_started_at}")
+    info(f"运行模式            : {run_mode_cn}")
+    info(f"统计模式            : {window_mode_cn}")
+    info(f"统计窗口            : {window_range}")
+    info(f"失败阈值            : 连续失败 >= {threshold}")
+    info(f"名称回退匹配        : {allow_name_fallback_cn}")
+    info("")
+    info("请求统计")
+    info(f"- 总事件数          : {usage_total_events}")
+    info(f"- 窗口事件数        : {usage_window_events}")
+    info("")
+    info("检测结果")
+    info(f"- 失效授权索引数    : {bad_count}")
+    info(f"- 待删文件数        : {candidate_count}")
+    info(f"- 跳过数量          : {skipped_count}")
+    if candidate_count > 0:
+        info("")
+        info("待删文件列表")
+        for i, c in enumerate(match.get("candidates", []), 1):
+            info(
+                f"{i}) auth_index={c.get('auth_index')}  "
+                f"file={c.get('file_name')}  max_streak={c.get('max_streak')}  "
+                f"match={c.get('match_mode')}"
+            )
+    if skipped_count > 0:
+        info("")
+        info("跳过列表")
+        for i, s in enumerate(match.get("skipped", []), 1):
+            line = f"{i}) auth_index={s.get('auth_index')}  reason={s.get('reason')}"
+            if s.get("file_name"):
+                line += f"  file={s.get('file_name')}"
+            if s.get("match_count") is not None:
+                line += f"  match_count={s.get('match_count')}"
+            info(line)
+    info("")
+    info("删除结果")
+    info(f"- 删除成功          : {len(deleted)}")
+    info(f"- 删除失败          : {len(errors)}")
+    if errors:
+        info("")
+        info("删除失败明细")
+        for i, e in enumerate(errors, 1):
+            info(
+                f"{i}) file={e.get('file_name')}  http_code={e.get('http_code')}"
+            )
+    info("===========================================================")
     if verbose:
         info("report_json=" + json.dumps(report, ensure_ascii=False, separators=(",", ":")))
 
