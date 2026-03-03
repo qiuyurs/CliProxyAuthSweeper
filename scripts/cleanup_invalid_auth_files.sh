@@ -253,37 +253,74 @@ def build_candidates(analysis, auth_files_obj, allow_name_fallback):
     if not isinstance(bad, list):
         bad = []
 
+    def normalize_value(v):
+        if v is None:
+            return ""
+        s = str(v).strip()
+        return s
+
     def normalize_name(name):
-        s = str(name or "")
-        return s[:-5] if s.endswith(".json") else s
+        s = normalize_value(name)
+        return s[:-5] if s.lower().endswith(".json") else s
+
+    def equals_idx(a, b):
+        av = normalize_value(a)
+        bv = normalize_value(b)
+        if not av or not bv:
+            return False
+        return av == bv or av.lower() == bv.lower()
+
+    def find_by_auth_index(idx):
+        out = []
+        for f in files:
+            if not isinstance(f, dict):
+                continue
+            raw = f.get("auth_index", f.get("authIndex"))
+            if equals_idx(raw, idx):
+                out.append(f)
+        return out
 
     def find_by_id(idx):
-        return [f for f in files if isinstance(f, dict) and str(f.get("id")) == idx]
+        out = []
+        for f in files:
+            if not isinstance(f, dict):
+                continue
+            file_id = normalize_value(f.get("id"))
+            if not file_id:
+                continue
+            if equals_idx(file_id, idx) or equals_idx(normalize_name(file_id), idx):
+                out.append(f)
+        return out
 
     def find_by_name(idx):
         out = []
         for f in files:
             if not isinstance(f, dict):
                 continue
-            name = str(f.get("name", ""))
-            if name == idx or normalize_name(name) == idx:
+            name = normalize_value(f.get("name", ""))
+            if equals_idx(name, idx) or equals_idx(normalize_name(name), idx):
                 out.append(f)
         return out
 
     candidates = []
     skipped = []
     for b in bad:
-        idx = str(b.get("auth_index", ""))
-        id_matches = find_by_id(idx)
-        match_mode = "id"
-        matches = id_matches
+        idx = normalize_value(b.get("auth_index", ""))
+        auth_index_matches = find_by_auth_index(idx)
+        match_mode = "auth_index"
+        matches = auth_index_matches
+
+        if not matches:
+            matches = find_by_id(idx)
+            match_mode = "id"
 
         if not matches and allow_name_fallback:
             matches = find_by_name(idx)
             match_mode = "name_fallback"
 
         if not matches:
-            skipped.append({"auth_index": idx, "reason": "unmatched"})
+            # Full usage scan may include stale auth_index records whose auth files
+            # were deleted earlier. Treat them as already handled and keep report clean.
             continue
 
         if len(matches) > 1:
@@ -396,7 +433,18 @@ def main():
     usage_total_events = int(analysis.get("usage_total_events", 0))
     usage_window_events = int(analysis.get("usage_window_events", 0))
     window_mode = analysis.get("window_mode", "unknown")
-    bad_count = len(analysis.get("bad_auth_indexes", []))
+    visible_bad_indexes = {
+        str(c.get("auth_index", "")) for c in match.get("candidates", [])
+    } | {
+        str(s.get("auth_index", "")) for s in match.get("skipped", [])
+    }
+    visible_bad_auth_indexes = [
+        b
+        for b in analysis.get("bad_auth_indexes", [])
+        if str(b.get("auth_index", "")) in visible_bad_indexes
+    ]
+
+    bad_count = len(visible_bad_auth_indexes)
     candidate_count = len(match.get("candidates", []))
     skipped_count = len(match.get("skipped", []))
 
@@ -450,7 +498,7 @@ def main():
         "window_mode": window_mode,
         "usage_total_events": usage_total_events,
         "usage_window_events": usage_window_events,
-        "bad_auth_indexes": analysis.get("bad_auth_indexes", []),
+        "bad_auth_indexes": visible_bad_auth_indexes,
         "delete_candidates": match.get("candidates", []),
         "skipped": match.get("skipped", []),
         "deleted": deleted,

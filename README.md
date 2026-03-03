@@ -1,4 +1,4 @@
-# CliProxyAuthSweeper
+﻿# CliProxyAuthSweeper
 
 `CliProxyAuthSweeper` 是一个基于 Bash 的 CLIProxyAPI 授权清理工具。
 
@@ -20,9 +20,12 @@
 
 匹配顺序：
 
-1. `auth_index == files[].id`
-2. 回退 `auth_index == files[].name`
-3. 回退 `auth_index == files[].name` 去掉 `.json`
+1. `auth_index == files[].auth_index`（兼容 `files[].authIndex`）
+2. 回退 `auth_index == files[].id`（兼容 `id` 去掉 `.json`）
+3. 回退 `auth_index == files[].name`
+4. 回退 `auth_index == files[].name` 去掉 `.json`
+
+说明：若某个失效 `auth_index` 未匹配到任何授权文件，视为历史残留（通常已删除），静默忽略且不在报告中展示。
 
 ## 依赖
 
